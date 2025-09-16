@@ -34,7 +34,7 @@ export default function CreateCampaign() {
       }));
 
       if (mediaFiles.length + newFiles.length > 3) {
-        toast.error("You can only upload a maximum of 3 files.")
+        console.log("Limite de 3 arquivos atingido");
         return
       }
 

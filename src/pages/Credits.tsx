@@ -2,7 +2,13 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { CreditCard, Plus, Wallet, TrendingUp, ArrowUpRight, ArrowDownLeft } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { CreditCard, Plus, Wallet, TrendingUp, ArrowUpRight, ArrowDownLeft, Send, Loader2 } from "lucide-react"
+import { useAuth } from "@/contexts/AuthContext"
+import { useState, useEffect } from "react"
+import { apiService } from "@/services/api"
+import { useToast } from "@/hooks/use-toast"
 
 const creditPackages = [
   {
@@ -69,7 +75,93 @@ const transactions = [
 ]
 
 export default function Credits() {
-  const currentBalance = 1245
+  const { user, token } = useAuth()
+  const { toast } = useToast()
+  const [walletData, setWalletData] = useState<any>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [transferLoading, setTransferLoading] = useState(false)
+  
+  // Transfer form states
+  const [toPublicKey, setToPublicKey] = useState("")
+  const [amount, setAmount] = useState("")
+
+  useEffect(() => {
+    const fetchWalletData = async () => {
+      if (!user?.email || !token) return
+
+      try {
+        setIsLoading(true)
+        const data = await apiService.getWallet(user.email, token)
+        setWalletData(data)
+      } catch (error) {
+        toast({
+          title: "Erro ao carregar dados da carteira",
+          description: error instanceof Error ? error.message : "Erro desconhecido",
+          variant: "destructive",
+        })
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchWalletData()
+  }, [user?.email, token, toast])
+
+  const handleTransfer = async () => {
+    if (!user?.email || !token) return
+
+    if (!toPublicKey || !amount) {
+      toast({
+        title: "Erro",
+        description: "Por favor, preencha todos os campos",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const amountNum = parseFloat(amount)
+    if (isNaN(amountNum) || amountNum <= 0) {
+      toast({
+        title: "Erro",
+        description: "O valor deve ser um número positivo",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setTransferLoading(true)
+
+    try {
+      await apiService.transfer({
+        fromEmail: user.email,
+        toPublicKey,
+        amount: amountNum
+      }, token)
+      
+      toast({
+        title: "Sucesso",
+        description: "Transferência realizada com sucesso!",
+      })
+      
+      // Reset form
+      setToPublicKey("")
+      setAmount("")
+      
+      // Refresh wallet data
+      const data = await apiService.getWallet(user.email, token)
+      setWalletData(data)
+    } catch (error) {
+      toast({
+        title: "Erro na transferência",
+        description: error instanceof Error ? error.message : "Erro desconhecido",
+        variant: "destructive",
+      })
+    } finally {
+      setTransferLoading(false)
+    }
+  }
+
+  const currentBalance = walletData?.account?.balances?.find((b: any) => b.asset_type === 'native')?.balance || 0
 
   return (
     <div className="max-w-6xl mx-auto space-y-8">
@@ -96,10 +188,12 @@ export default function Credits() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-4xl font-bold mb-2">{currentBalance.toLocaleString()}</div>
-              <div className="text-white/80">Campaign Credits</div>
+              <div className="text-4xl font-bold mb-2">
+                {isLoading ? <Loader2 className="h-8 w-8 animate-spin" /> : `${parseFloat(currentBalance).toFixed(2)}`}
+              </div>
+              <div className="text-white/80">XLM Balance</div>
               <div className="mt-4 text-sm text-white/80">
-                ≈ ${(currentBalance * 0.01).toFixed(2)} USD value
+                Stellar Lumens
               </div>
             </CardContent>
           </Card>
@@ -132,8 +226,67 @@ export default function Credits() {
           </div>
         </div>
 
-        {/* Credit Packages */}
+        {/* Transfer XLM */}
         <div className="lg:col-span-2">
+          <div className="mb-6">
+            <h2 className="text-2xl font-semibold mb-2">Transfer XLM</h2>
+            <p className="text-muted-foreground">
+              Send XLM to another Stellar address
+            </p>
+          </div>
+
+          <Card className="bg-gradient-card border-border mb-8">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Send className="h-5 w-5 text-web3-primary" />
+                Send XLM
+              </CardTitle>
+              <CardDescription>
+                Transfer XLM to another Stellar public key
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="toPublicKey">Recipient Public Key</Label>
+                <Input
+                  id="toPublicKey"
+                  placeholder="GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+                  value={toPublicKey}
+                  onChange={(e) => setToPublicKey(e.target.value)}
+                  disabled={transferLoading}
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="amount">Amount (XLM)</Label>
+                <Input
+                  id="amount"
+                  type="number"
+                  step="0.0000001"
+                  placeholder="0.0000000"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  disabled={transferLoading}
+                />
+              </div>
+
+              <Button 
+                onClick={handleTransfer}
+                disabled={transferLoading || !toPublicKey || !amount}
+                className="w-full bg-gradient-primary hover:opacity-90 text-white"
+              >
+                {transferLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Sending...
+                  </>
+                ) : (
+                  "Send XLM"
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+
           <div className="mb-6">
             <h2 className="text-2xl font-semibold mb-2">Purchase Credits</h2>
             <p className="text-muted-foreground">
