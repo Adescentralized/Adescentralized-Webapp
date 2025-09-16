@@ -7,10 +7,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Switch } from "@/components/ui/switch"
-import { CalendarIcon, Target, Users, Globe, Zap, UploadCloud, FileImage, Video, X } from "lucide-react"
+import { CalendarIcon, Target, Users, Globe, Zap, UploadCloud, FileImage, Video, X, Loader2 } from "lucide-react"
 import { useState } from "react"
 import { format } from "date-fns"
-import { toast } from "sonner"
+import { useAuth } from "@/contexts/AuthContext"
+import { apiService } from "@/services/api"
+import { useToast } from "@/hooks/use-toast"
+import { useNavigate } from "react-router-dom"
 
 type MediaFile = { 
   url: string; 
@@ -24,6 +27,20 @@ export default function CreateCampaign() {
   const [dragging, setDragging] = useState(false)
   const [mediaFiles, setMediaFiles] = useState<MediaFile[]>([])
   const [selectedPreviewIndex, setSelectedPreviewIndex] = useState(0)
+  const [isLoading, setIsLoading] = useState(false)
+  
+  // Form fields
+  const [title, setTitle] = useState("")
+  const [description, setDescription] = useState("")
+  const [targetUrl, setTargetUrl] = useState("")
+  const [budgetXlm, setBudgetXlm] = useState("")
+  const [costPerClick, setCostPerClick] = useState("")
+  const [tags, setTags] = useState("")
+  const [category, setCategory] = useState("")
+  
+  const { user, token } = useAuth()
+  const { toast } = useToast()
+  const navigate = useNavigate()
 
   const handleFiles = (files: FileList | null) => {
     if (files) {
@@ -76,6 +93,81 @@ export default function CreateCampaign() {
     }
   }
 
+  const handleSubmit = async () => {
+    if (!user || !token) {
+      toast({
+        title: "Erro",
+        description: "Você precisa estar logado para criar uma campanha",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!title || !targetUrl || !budgetXlm || !costPerClick || mediaFiles.length === 0) {
+      toast({
+        title: "Erro",
+        description: "Por favor, preencha todos os campos obrigatórios e adicione pelo menos uma imagem",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const budgetNum = parseFloat(budgetXlm)
+    const costNum = parseFloat(costPerClick)
+
+    if (isNaN(budgetNum) || budgetNum <= 0) {
+      toast({
+        title: "Erro",
+        description: "O orçamento deve ser um valor numérico positivo",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (isNaN(costNum) || costNum <= 0) {
+      toast({
+        title: "Erro",
+        description: "O custo por clique deve ser um valor numérico positivo",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsLoading(true)
+
+    try {
+      const formData = new FormData()
+      formData.append('title', title)
+      formData.append('description', description)
+      formData.append('targetUrl', targetUrl)
+      formData.append('budgetXlm', budgetXlm)
+      formData.append('costPerClick', costPerClick)
+      formData.append('tags', tags)
+      
+      // Adiciona apenas a primeira imagem (conforme API)
+      if (mediaFiles[0]) {
+        formData.append('campaignImage', mediaFiles[0].file)
+      }
+
+      const response = await apiService.createCampaign(formData, token)
+      
+      toast({
+        title: "Sucesso",
+        description: "Campanha criada com sucesso!",
+      })
+      
+      navigate("/")
+    } catch (error) {
+      toast({
+        title: "Erro ao criar campanha",
+        description: error instanceof Error ? error.message : "Erro desconhecido",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   return (
     <div className="max-w-4xl mx-auto space-y-8">
       {/* Header */}
@@ -105,7 +197,13 @@ export default function CreateCampaign() {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="title">Campaign Title</Label>
-                <Input id="title" placeholder="Enter campaign title" />
+                <Input 
+                  id="title" 
+                  placeholder="Enter campaign title" 
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  disabled={isLoading}
+                />
               </div>
               
               <div className="space-y-2">
@@ -114,30 +212,62 @@ export default function CreateCampaign() {
                   id="description" 
                   placeholder="Describe your campaign objectives and target audience"
                   rows={3}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  disabled={isLoading}
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="category">Category</Label>
-                  <Select>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="nft">NFT Collection</SelectItem>
-                      <SelectItem value="defi">DeFi Protocol</SelectItem>
-                      <SelectItem value="gaming">Web3 Gaming</SelectItem>
-                      <SelectItem value="dao">DAO</SelectItem>
-                      <SelectItem value="metaverse">Metaverse</SelectItem>
-                      <SelectItem value="other">Other</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="targetUrl">Target URL</Label>
+                  <Input 
+                    id="targetUrl" 
+                    type="url" 
+                    placeholder="https://example.com" 
+                    value={targetUrl}
+                    onChange={(e) => setTargetUrl(e.target.value)}
+                    disabled={isLoading}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="budget">Budget (XLM)</Label>
+                    <Input 
+                      id="budget" 
+                      type="number" 
+                      step="0.0000001"
+                      placeholder="0" 
+                      value={budgetXlm}
+                      onChange={(e) => setBudgetXlm(e.target.value)}
+                      disabled={isLoading}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="costPerClick">Cost per Click (XLM)</Label>
+                    <Input 
+                      id="costPerClick" 
+                      type="number" 
+                      step="0.0000001"
+                      placeholder="0.001" 
+                      value={costPerClick}
+                      onChange={(e) => setCostPerClick(e.target.value)}
+                      disabled={isLoading}
+                    />
+                  </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="budget">Budget (USD)</Label>
-                  <Input id="budget" type="number" placeholder="0" />
+                  <Label htmlFor="tags">Tags (comma separated)</Label>
+                  <Input 
+                    id="tags" 
+                    placeholder="crypto, nft, defi" 
+                    value={tags}
+                    onChange={(e) => setTags(e.target.value)}
+                    disabled={isLoading}
+                  />
                 </div>
               </div>
             </CardContent>
@@ -401,10 +531,21 @@ export default function CreateCampaign() {
 
           {/* Actions */}
           <div className="space-y-3">
-            <Button className="w-full bg-gradient-primary hover:opacity-90 text-white shadow-glow">
-              Create Campaign
+            <Button 
+              className="w-full bg-gradient-primary hover:opacity-90 text-white shadow-glow"
+              onClick={handleSubmit}
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                'Create Campaign'
+              )}
             </Button>
-            <Button variant="outline" className="w-full">
+            <Button variant="outline" className="w-full" disabled={isLoading}>
               Save as Draft
             </Button>
           </div>

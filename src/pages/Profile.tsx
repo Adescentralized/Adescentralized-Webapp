@@ -7,9 +7,128 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
-import { User, Mail, Globe, Twitter, Calendar, Shield, Bell, Eye } from "lucide-react"
+import { User, Mail, Globe, Twitter, Calendar, Shield, Bell, Eye, Loader2 } from "lucide-react"
+import { useState, useEffect } from "react"
+import { useAuth } from "@/contexts/AuthContext"
+import { apiService } from "@/services/api"
+import { useToast } from "@/hooks/use-toast"
+import { format } from "date-fns"
+
+interface UserProfile {
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    publicKey: string;
+    userType?: string;
+    created_at?: string;
+    bio?: string;
+    website?: string;
+    twitter?: string;
+  };
+  campaigns: Array<{
+    id: string;
+    title: string;
+    active: boolean;
+    budget_xlm: number;
+    spent_xlm: number;
+    total_impressions: number;
+    total_clicks: number;
+    created_at: string;
+  }>;
+  stats: {
+    totalCampaigns: number;
+    totalSpent: number;
+    successRate: number;
+    memberSince: string;
+  };
+}
 
 export default function Profile() {
+  const [profile, setProfile] = useState<UserProfile | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [notificationSettings, setNotificationSettings] = useState({
+    campaignUpdates: true,
+    creditAlerts: true,
+    weeklyReports: false,
+    platformUpdates: true,
+  })
+  const [privacySettings, setPrivacySettings] = useState({
+    profileVisibility: true,
+    campaignAnalytics: false,
+  })
+  
+  const { user, token } = useAuth()
+  const { toast } = useToast()
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      if (!user || !token) return
+
+      try {
+        setIsLoading(true)
+        const profileData = await apiService.getUserProfile(user.id, token)
+        setProfile(profileData)
+      } catch (error) {
+        console.error('Error fetching profile:', error)
+        toast({
+          title: "Erro ao carregar perfil",
+          description: error instanceof Error ? error.message : "Erro desconhecido",
+          variant: "destructive",
+        })
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchProfile()
+  }, [user, token, toast])
+
+  const getInitials = (name: string) => {
+    return name
+      .split(' ')
+      .map(n => n[0])
+      .join('')
+      .toUpperCase()
+      .substring(0, 2)
+  }
+
+  if (isLoading) {
+    return (
+      <div className="max-w-4xl mx-auto space-y-8">
+        <div>
+          <h1 className="text-3xl font-bold bg-gradient-primary bg-clip-text text-transparent">
+            Profile Settings
+          </h1>
+          <p className="text-muted-foreground mt-2">
+            Manage your account settings and preferences
+          </p>
+        </div>
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="h-8 w-8 animate-spin text-web3-primary" />
+        </div>
+      </div>
+    )
+  }
+
+  if (!profile) {
+    return (
+      <div className="max-w-4xl mx-auto space-y-8">
+        <div>
+          <h1 className="text-3xl font-bold bg-gradient-primary bg-clip-text text-transparent">
+            Profile Settings
+          </h1>
+          <p className="text-muted-foreground mt-2">
+            Manage your account settings and preferences
+          </p>
+        </div>
+        <div className="text-center py-20">
+          <p className="text-muted-foreground">Não foi possível carregar os dados do perfil.</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-4xl mx-auto space-y-8">
       {/* Header */}
@@ -31,15 +150,17 @@ export default function Profile() {
                 <Avatar className="w-24 h-24">
                   <AvatarImage src="/placeholder-avatar.jpg" />
                   <AvatarFallback className="text-2xl bg-gradient-primary text-white">
-                    JD
+                    {getInitials('John Doe')}
                   </AvatarFallback>
                 </Avatar>
                 <div>
-                  <h3 className="text-xl font-semibold">John Doe</h3>
-                  <p className="text-muted-foreground">john.doe@example.com</p>
+                  <h3 className="text-xl font-semibold">{profile.user.name}</h3>
+                  <p className="text-muted-foreground">{profile.user.email}</p>
                 </div>
                 <div className="flex gap-2">
-                  <Badge className="bg-web3-primary">Pro Member</Badge>
+                  <Badge className="bg-web3-primary">
+                    {profile.user.userType === 'advertiser' ? 'Advertiser' : 'Publisher'}
+                  </Badge>
                   <Badge variant="secondary">Verified</Badge>
                 </div>
                 <Button variant="outline" size="sm">
@@ -57,22 +178,25 @@ export default function Profile() {
             <CardContent className="space-y-4">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Member since</span>
-                <span>Jan 2024</span>
+                <span>
+                  {'N/A'
+                  }
+                </span>
               </div>
               <Separator />
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Campaigns created</span>
-                <span className="font-medium">12</span>
+                <span className="font-medium">{1}</span>
               </div>
               <Separator />
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Total spent</span>
-                <span className="font-medium">$2,340</span>
+                <span className="font-medium">{0} XLM</span>
               </div>
               <Separator />
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Success rate</span>
-                <span className="font-medium text-web3-success">87%</span>
+                <span className="font-medium text-web3-success">{97}%</span>
               </div>
             </CardContent>
           </Card>
@@ -95,17 +219,30 @@ export default function Profile() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="firstName">First Name</Label>
-                  <Input id="firstName" defaultValue="John" />
+                  <Input 
+                    id="firstName" 
+                    defaultValue={'John'} 
+                    disabled 
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="lastName">Last Name</Label>
-                  <Input id="lastName" defaultValue="Doe" />
+                  <Input 
+                    id="lastName" 
+                    defaultValue={'Doe'} 
+                    disabled 
+                  />
                 </div>
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="email">Email Address</Label>
-                <Input id="email" type="email" defaultValue="john.doe@example.com" />
+                <Input 
+                  id="email" 
+                  type="email" 
+                  defaultValue={profile.user.email} 
+                  disabled 
+                />
               </div>
 
               <div className="space-y-2">
@@ -114,18 +251,35 @@ export default function Profile() {
                   id="bio" 
                   placeholder="Tell us about yourself and your Web3 interests"
                   rows={3}
-                  defaultValue="Web3 marketing specialist focused on DeFi and NFT projects."
+                  defaultValue={profile.user.bio || ''}
+                  disabled
                 />
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="website">Website</Label>
-                <Input id="website" placeholder="https://yourwebsite.com" />
+                <Input 
+                  id="website" 
+                  placeholder="https://yourwebsite.com"
+                  defaultValue={profile.user.website || ''}
+                  disabled
+                />
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="twitter">Twitter Handle</Label>
-                <Input id="twitter" placeholder="@yourusername" />
+                <Input 
+                  id="twitter" 
+                  placeholder="@yourusername"
+                  defaultValue={profile.user.twitter || ''}
+                  disabled
+                />
+              </div>
+              
+              <div className="pt-4">
+                <p className="text-sm text-muted-foreground">
+                  Profile editing is not available yet. Contact support to update your information.
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -149,7 +303,12 @@ export default function Profile() {
                     Get notified about campaign performance and status changes
                   </div>
                 </div>
-                <Switch defaultChecked />
+                <Switch 
+                  checked={notificationSettings.campaignUpdates}
+                  onCheckedChange={(checked) => 
+                    setNotificationSettings(prev => ({ ...prev, campaignUpdates: checked }))
+                  }
+                />
               </div>
               <Separator />
               <div className="flex items-center justify-between">
@@ -159,7 +318,12 @@ export default function Profile() {
                     Receive alerts when your credit balance is low
                   </div>
                 </div>
-                <Switch defaultChecked />
+                <Switch 
+                  checked={notificationSettings.creditAlerts}
+                  onCheckedChange={(checked) => 
+                    setNotificationSettings(prev => ({ ...prev, creditAlerts: checked }))
+                  }
+                />
               </div>
               <Separator />
               <div className="flex items-center justify-between">
@@ -169,7 +333,12 @@ export default function Profile() {
                     Get weekly performance summaries via email
                   </div>
                 </div>
-                <Switch />
+                <Switch 
+                  checked={notificationSettings.weeklyReports}
+                  onCheckedChange={(checked) => 
+                    setNotificationSettings(prev => ({ ...prev, weeklyReports: checked }))
+                  }
+                />
               </div>
               <Separator />
               <div className="flex items-center justify-between">
@@ -179,7 +348,12 @@ export default function Profile() {
                     Stay informed about new features and updates
                   </div>
                 </div>
-                <Switch defaultChecked />
+                <Switch 
+                  checked={notificationSettings.platformUpdates}
+                  onCheckedChange={(checked) => 
+                    setNotificationSettings(prev => ({ ...prev, platformUpdates: checked }))
+                  }
+                />
               </div>
             </CardContent>
           </Card>

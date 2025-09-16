@@ -204,6 +204,30 @@ class ApiService {
 
     return data;
   }
+
+  async getUserProfile(userId: string, token: string) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/dashboard/${userId}`, {
+        method: 'GET',
+        headers: this.getAuthHeaders(token),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error((data as APIError).error || 'Failed to fetch user profile');
+      }
+
+      return data;
+    } catch (error) {
+      // Use mock data in development when backend is not available
+      if (devMockService.shouldUseMock(error)) {
+        console.warn('Backend not available, using mock profile data');
+        return devMockService.getMockProfile();
+      }
+      throw error;
+    }
+  }
 }
 
 export const apiService = new ApiService();
